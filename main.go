@@ -12,7 +12,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 || len(os.Args) > 3 {
-		fmt.Fprintf(os.Stderr, "USAGE: proxify https://target.system [bind]\n")
+		fmt.Fprintf(os.Stderr, "USAGE: gotcha https://target.system [bind]\n")
 		os.Exit(1)
 		return
 	}
