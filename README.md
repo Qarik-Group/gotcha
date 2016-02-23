@@ -1,5 +1,5 @@
-gotcha - A Go HTTP MitM Proxy for Diagnostic Purposes
-=====================================================
+gotcha - A Debugging MiTM HTTP Proxy
+====================================
 
 `gotcha` is a small HTTP/HTTPS man-in-the-middle proxy, which you
 can use to troubleshoot HTTP traffic that occurs behind the veil
