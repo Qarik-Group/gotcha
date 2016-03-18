@@ -40,3 +40,29 @@ The diagnostics part comes in because `gotcha` dumps the entire HTTP
 conversation to standard output, so you can see it in your
 terminal.  The upstream is still talking HTTPS, but you can now
 see headers, bodies and response codes!
+
+
+A Real Example!
+---------------
+
+It's a bit of a gimme, but here's `gotcha` being used to intercept
+HTTP traffic to www.google.com (over TLS) via curl:
+
+```
+$ /gotcha https://www.google.com &
+targeting https://www.google.com
+binding :3128
+
+$ curl -X HEAD http://localhost:3128
+HEAD / HTTP/1.1
+Host: www.google.com
+User-Agent: curl/7.43.0
+Accept: */*
+
+
+HTTP/1.1 200 OK
+Transfer-Encoding: chunked
+Accept-Ranges: none
+Server: gws
+...
+```
