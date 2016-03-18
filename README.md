@@ -21,8 +21,8 @@ It works like this:
 |                |     |                        |     +----------+
 | connecting to  |     | binds 127.0.0.1:3128   |
 | 127.0.0.1:3128 |     | connects to            |
-+----------------+     | https://api.end.poi.nt |
-                       +------------------------+
+| (plain HTTP)   |     | https://api.end.poi.nt |
++----------------+     +------------------------+
                                   |
                                   |
                                   V
@@ -33,7 +33,7 @@ It works like this:
 
 So, instead of connecting directly to https://api.end.poi.nt, the
 client connects to the `gotcha` process, which is listening on
-some local port (3128 by default) and MitM-ing the
+some local port (https://127.0.0.1:3128 by default) and MitM-ing the
 requests/responses to the upstream.
 
 The diagnostics part comes in because `gotcha` dumps the entire HTTP
