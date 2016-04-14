@@ -3,36 +3,47 @@ package main
 import (
 	"fmt"
 	"io/ioutil"
+	"crypto/tls"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
 	"strings"
+
+	"github.com/pborman/getopt"
 )
 
 func main() {
-	if len(os.Args) < 2 || len(os.Args) > 3 {
-		fmt.Fprintf(os.Stderr, "USAGE: gotcha https://target.system [bind]\n")
+	getopt.SetParameters("https://target.system [local port]\n")
+	help := getopt.BoolLong("help", 'h', "Show this help screen.")
+	noverify := getopt.BoolLong("no-verify", 'N', "Do not verify TLS/SSL certificates.")
+
+	var opts = getopt.CommandLine
+	opts.Parse(os.Args)
+
+	if *help {
+		getopt.PrintUsage(os.Stdout)
+		return
+	}
+
+	if opts.NArgs() != 1 && opts.NArgs() != 2 {
+		getopt.PrintUsage(os.Stderr)
 		os.Exit(1)
 		return
 	}
 
-	if os.Args[1] == "help" || os.Args[1] == "-h" || os.Args[1] == "--help" || os.Args[1] == "-?" {
-		fmt.Fprintf(os.Stderr, "USAGE: gotcha https://target.system [bind]\n")
-		return
-	}
-
-	target, err := url.Parse(os.Args[1])
+	args := opts.Args()
+	target, err := url.Parse(args[0])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to parse target '%s': %s\n", os.Args[1], err)
+		fmt.Fprintf(os.Stderr, "failed to parse target '%s': %s\n", args[0], err)
 		os.Exit(1)
 		return
 	}
 	fmt.Fprintf(os.Stderr, "targeting %s\n", target)
 
 	bind := ":3128"
-	if len(os.Args) == 3 {
-		bind = os.Args[2]
+	if len(args) == 2 {
+		bind = args[1]
 		if strings.IndexRune(bind, ':') < 0 {
 			bind = ":" + bind
 		}
@@ -59,7 +70,14 @@ func main() {
 			fmt.Fprintf(os.Stderr, "%s\n", string(x))
 		}
 
-		res, err := http.DefaultClient.Do(b2b)
+		client := &http.Client{
+			Transport:  &http.Transport{
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: *noverify,
+				},
+			},
+		}
+		res, err := client.Do(b2b)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to read response: %s\n", err)
 			w.WriteHeader(599)
