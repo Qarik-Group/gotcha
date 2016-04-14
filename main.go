@@ -17,6 +17,11 @@ func main() {
 		return
 	}
 
+	if os.Args[1] == "help" || os.Args[1] == "-h" || os.Args[1] == "--help" || os.Args[1] == "-?" {
+		fmt.Fprintf(os.Stderr, "USAGE: gotcha https://target.system [bind]\n")
+		return
+	}
+
 	target, err := url.Parse(os.Args[1])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to parse target '%s': %s\n", os.Args[1], err)
