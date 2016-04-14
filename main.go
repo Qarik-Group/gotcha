@@ -1,13 +1,13 @@
 package main
 
 import (
-	"os"
 	"fmt"
-	"strings"
+	"io/ioutil"
 	"net/http"
 	"net/http/httputil"
-	"io/ioutil"
 	"net/url"
+	"os"
+	"strings"
 )
 
 func main() {
