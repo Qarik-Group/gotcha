@@ -1,22 +1,32 @@
 package main
 
 import (
+	"crypto/tls"
 	"fmt"
 	"io/ioutil"
-	"crypto/tls"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/pborman/getopt"
 )
+
+func timing(step string, f func()) {
+	start := time.Now()
+	f()
+	end := time.Now()
+	took := float64(end.UnixNano()-start.UnixNano()) / 1000000
+	fmt.Fprintf(os.Stderr, "%s took %5.3f ms\n", step, took)
+}
 
 func main() {
 	getopt.SetParameters("https://target.system [local port]\n")
 	help := getopt.BoolLong("help", 'h', "Show this help screen.")
 	noverify := getopt.BoolLong("no-verify", 'N', "Do not verify TLS/SSL certificates.")
+	onlyheaders := getopt.BoolLong("only-headers", 'H', "Only dump HTTP request/response headers (skip the body).")
 
 	var opts = getopt.CommandLine
 	opts.Parse(os.Args)
@@ -66,28 +76,38 @@ func main() {
 			}
 		}
 
-		if x, err := httputil.DumpRequestOut(b2b, true); err == nil {
+		if x, err := httputil.DumpRequestOut(b2b, !*onlyheaders); err == nil {
 			fmt.Fprintf(os.Stderr, "%s\n", string(x))
 		}
 
 		client := &http.Client{
-			Transport:  &http.Transport{
+			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{
 					InsecureSkipVerify: *noverify,
 				},
 			},
 		}
-		res, err := client.Do(b2b)
+		var res *http.Response
+		timing("request", func() {
+			res, err = client.Do(b2b)
+		})
+
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to read response: %s\n", err)
 			w.WriteHeader(599)
 			return
 		}
-		if x, err := httputil.DumpResponse(res, true); err == nil {
+
+		fmt.Fprintf(os.Stderr, "\n\n\n")
+		if x, err := httputil.DumpResponse(res, !*onlyheaders); err == nil {
 			fmt.Fprintf(os.Stderr, "%s\n", string(x))
 		}
 
-		b, err := ioutil.ReadAll(res.Body)
+		var b []byte
+		timing("receive response", func() {
+			b, err = ioutil.ReadAll(res.Body)
+		})
+
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to read body: %s\n", err)
 			w.WriteHeader(599)
@@ -98,8 +118,11 @@ func main() {
 				w.Header().Add(header, value)
 			}
 		}
-		w.WriteHeader(res.StatusCode)
-		w.Write(b)
+
+		timing("send response", func() {
+			w.WriteHeader(res.StatusCode)
+			w.Write(b)
+		})
 	})
 
 	http.ListenAndServe(bind, nil)
