@@ -30,7 +30,7 @@ final: release
 	@go get github.com/aktau/github-release
 	@test -n "$(GITHUB_TOKEN)" || echo "No GITHUB_TOKEN specified..."
 	@test -n "$(GITHUB_TOKEN)" || exit 1
-	github-release release -u $(GITHUB_USER) -r $(GITHUB_REPO) -n "Marco v$(VERSION)" -t "v$(VERSION)" -d "$$(cat ci/release_notes.md || "no release notes...")"
+	github-release release -u $(GITHUB_USER) -r $(GITHUB_REPO) -n "Gotcha v$(VERSION)" -t "v$(VERSION)" -d "$$(cat ci/release_notes.md || "no release notes...")"
 	@cd release/artifacts && \
 		for f in *; do \
 			github-release upload -u $(GITHUB_USER) -r $(GITHUB_REPO) -t "v$(VERSION)" -n $$f -f $$f; \
