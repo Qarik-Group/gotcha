@@ -22,14 +22,26 @@ func timing(step string, f func()) {
 	fmt.Fprintf(os.Stderr, "%s took %5.3f ms\n", step, took)
 }
 
+var Version string
+
 func main() {
 	getopt.SetParameters("https://target.system [local port]\n")
 	help := getopt.BoolLong("help", 'h', "Show this help screen.")
 	noverify := getopt.BoolLong("no-verify", 'N', "Do not verify TLS/SSL certificates.")
 	onlyheaders := getopt.BoolLong("only-headers", 'H', "Only dump HTTP request/response headers (skip the body).")
+	v := getopt.BoolLong("version", 'v', "Print version information and exit")
 
 	var opts = getopt.CommandLine
 	opts.Parse(os.Args)
+
+	if v != nil && *v {
+		if Version == "" {
+			fmt.Printf("gotcha (development)\n")
+		} else {
+			fmt.Printf("gotcha v%s\n", Version)
+		}
+		os.Exit(0)
+	}
 
 	if *help {
 		getopt.PrintUsage(os.Stdout)
