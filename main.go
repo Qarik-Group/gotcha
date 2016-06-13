@@ -93,6 +93,22 @@ func main() {
 		}
 
 		client := &http.Client{
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if len(via) > 10 {
+					return fmt.Errorf("stopped after 10 redirects")
+				}
+				for header, values := range via[0].Header {
+					for _, value := range values {
+						req.Header.Add(header, value)
+					}
+				}
+
+				fmt.Printf("-- REDIRECT ------\n")
+				if x, err := httputil.DumpRequestOut(req, !*onlyheaders); err == nil {
+					fmt.Fprintf(os.Stderr, "%s\n", string(x))
+				}
+				return nil
+			},
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{
 					InsecureSkipVerify: *noverify,
