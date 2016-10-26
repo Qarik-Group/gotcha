@@ -31,6 +31,11 @@ func main() {
 	onlyheaders := getopt.BoolLong("only-headers", 'H', "Only dump HTTP request/response headers (skip the body).")
 	v := getopt.BoolLong("version", 'v', "Print version information and exit")
 
+	verifyStr := strings.ToLower(os.Getenv("SSL_SKIP_VERIFY"))
+	if verifyStr != "" && verifyStr != "no" && verifyStr != "false" && verifyStr != "0" {
+		*noverify = true
+	}
+
 	var opts = getopt.CommandLine
 	opts.Parse(os.Args)
 
@@ -48,22 +53,36 @@ func main() {
 		return
 	}
 
-	if opts.NArgs() != 1 && opts.NArgs() != 2 {
+	if opts.NArgs() > 2 {
 		getopt.PrintUsage(os.Stderr)
 		os.Exit(1)
 		return
 	}
 
+	var target *url.URL
+	var err error
 	args := opts.Args()
-	target, err := url.Parse(args[0])
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to parse target '%s': %s\n", args[0], err)
-		os.Exit(1)
-		return
+	if len(args) == 0 {
+		target, err = url.Parse(os.Getenv("GOTCHA_BACKEND"))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to parse target '%s': %s\n", os.Getenv("GOTCHA_BACKEND"), err)
+			os.Exit(1)
+			return
+		}
+	} else {
+		target, err = url.Parse(args[0])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to parse target '%s': %s\n", args[0], err)
+			os.Exit(1)
+			return
+		}
 	}
 	fmt.Fprintf(os.Stderr, "targeting %s\n", target)
 
 	bind := ":3128"
+	if os.Getenv("PORT") != "" {
+		bind = ":" + os.Getenv("PORT")
+	}
 	if len(args) == 2 {
 		bind = args[1]
 		if strings.IndexRune(bind, ':') < 0 {
