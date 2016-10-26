@@ -113,6 +113,7 @@ func main() {
 				TLSClientConfig: &tls.Config{
 					InsecureSkipVerify: *noverify,
 				},
+				Proxy: http.ProxyFromEnvironment,
 			},
 		}
 		var res *http.Response
