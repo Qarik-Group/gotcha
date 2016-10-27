@@ -59,23 +59,25 @@ func main() {
 		return
 	}
 
-	var target *url.URL
-	var err error
+	backend := os.Getenv("GOTCHA_BACKEND")
 	args := opts.Args()
-	if len(args) == 0 {
-		target, err = url.Parse(os.Getenv("GOTCHA_BACKEND"))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to parse target '%s': %s\n", os.Getenv("GOTCHA_BACKEND"), err)
-			os.Exit(1)
-			return
-		}
-	} else {
-		target, err = url.Parse(args[0])
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to parse target '%s': %s\n", args[0], err)
-			os.Exit(1)
-			return
-		}
+	if len(args) >= 1 {
+		backend = args[0]
+	}
+
+	if backend == "" {
+		fmt.Fprintf(os.Stderr, "No backend host specified, and no $GOTCHA_BACKEND environment variable set\n\n"+
+			"If you are deploying gotcha as a Cloud Foundry application, don't forget to `cf set-env"+
+			" appname GOTCHA_BACKEND https://host/url'\n\n")
+		os.Exit(1)
+		return
+	}
+
+	target, err := url.Parse(backend)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to parse target '%s': %s\n", args[0], err)
+		os.Exit(1)
+		return
 	}
 	fmt.Fprintf(os.Stderr, "targeting %s\n", target)
 
