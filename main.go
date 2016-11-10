@@ -31,6 +31,11 @@ func main() {
 	onlyheaders := getopt.BoolLong("only-headers", 'H', "Only dump HTTP request/response headers (skip the body).")
 	v := getopt.BoolLong("version", 'v', "Print version information and exit")
 
+	verifyStr := strings.ToLower(os.Getenv("SSL_SKIP_VERIFY"))
+	if verifyStr != "" && verifyStr != "no" && verifyStr != "false" && verifyStr != "0" {
+		*noverify = true
+	}
+
 	var opts = getopt.CommandLine
 	opts.Parse(os.Args)
 
@@ -48,14 +53,27 @@ func main() {
 		return
 	}
 
-	if opts.NArgs() != 1 && opts.NArgs() != 2 {
+	if opts.NArgs() > 2 {
 		getopt.PrintUsage(os.Stderr)
 		os.Exit(1)
 		return
 	}
 
+	backend := os.Getenv("GOTCHA_BACKEND")
 	args := opts.Args()
-	target, err := url.Parse(args[0])
+	if len(args) >= 1 {
+		backend = args[0]
+	}
+
+	if backend == "" {
+		fmt.Fprintf(os.Stderr, "No backend host specified, and no $GOTCHA_BACKEND environment variable set\n\n"+
+			"If you are deploying gotcha as a Cloud Foundry application, don't forget to `cf set-env"+
+			" appname GOTCHA_BACKEND https://host/url'\n\n")
+		os.Exit(1)
+		return
+	}
+
+	target, err := url.Parse(backend)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to parse target '%s': %s\n", args[0], err)
 		os.Exit(1)
@@ -64,6 +82,9 @@ func main() {
 	fmt.Fprintf(os.Stderr, "targeting %s\n", target)
 
 	bind := ":3128"
+	if os.Getenv("PORT") != "" {
+		bind = ":" + os.Getenv("PORT")
+	}
 	if len(args) == 2 {
 		bind = args[1]
 		if strings.IndexRune(bind, ':') < 0 {

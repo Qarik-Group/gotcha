@@ -1,0 +1,6 @@
+---
+name: gotcha
+env:
+  SSL_SKIP_VERIFY: false # set to true if proxying to something with self-signed certs
+# NOTE: set this environment variable to what you need in your test case, prior to `cf push`ing
+#  GOTCHA_BACKEND: http://your_backend_to_proxy:port
