@@ -109,6 +109,9 @@ func main() {
 			}
 		}
 
+		b2b.ContentLength = req.ContentLength
+		b2b.TransferEncoding = req.TransferEncoding
+
 		if x, err := httputil.DumpRequestOut(b2b, !*onlyheaders); err == nil {
 			fmt.Fprintf(os.Stderr, "%s\n", string(x))
 		}

@@ -66,3 +66,13 @@ Accept-Ranges: none
 Server: gws
 ...
 ```
+
+Environment Variables
+---------------------
+
+Some aspects of `gotcha` can be configured via environment variables, to
+facilitate running it as a Cloud Foundry application. Here they are:
+
+- `PORT` Specifies the port the app will listen on
+- `GOTCHA_BACKEND` Specifies the upstream endpoint gotcha will front
+- `SSL_SKIP_VERIFY` Specifies whether gotcha will care about invalid upstream SSL certificates
