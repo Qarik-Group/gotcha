@@ -1,10 +1,28 @@
 {
-	"ImportPath": "github.com/jhunt/gotcha",
-	"GoVersion": "go1.5",
+	"ImportPath": "github.com/starkandwayne/gotcha",
+	"GoVersion": "go1.7",
+	"GodepVersion": "v79",
 	"Deps": [
 		{
-			"ImportPath": "github.com/pborman/getopt",
-			"Rev": "ec82d864f599c39673eef89f91b93fa5576567a1"
+			"ImportPath": "github.com/jhunt/go-ansi",
+			"Rev": "73f418f6350861e7be9863de844ff9bb7855fab6"
+		},
+		{
+			"ImportPath": "github.com/jhunt/go-cli",
+			"Rev": "d74b1b6905297834d014b95038b9a58539832140"
+		},
+		{
+			"ImportPath": "github.com/jhunt/go-snapshot",
+			"Rev": "92984e0ad8d83220d55e97554c5ec8d41d8edc18"
+		},
+		{
+			"ImportPath": "github.com/mattn/go-isatty",
+			"Comment": "v0.0.2",
+			"Rev": "fc9e8d8ef48496124e79ae0df75490096eccf6fe"
+		},
+		{
+			"ImportPath": "golang.org/x/sys/unix",
+			"Rev": "f3918c30c5c2cb527c0b071a27c35120a6c0719a"
 		}
 	]
 }
