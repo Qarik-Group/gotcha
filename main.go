@@ -2,7 +2,8 @@ package main
 
 import (
 	"crypto/tls"
-	"fmt"
+	fmt "github.com/jhunt/go-ansi"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/http/httputil"
@@ -11,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pborman/getopt"
+	"github.com/jhunt/go-cli"
 )
 
 func timing(step string, f func()) {
@@ -24,22 +25,31 @@ func timing(step string, f func()) {
 
 var Version string
 
-func main() {
-	getopt.SetParameters("https://target.system [local port]\n")
-	help := getopt.BoolLong("help", 'h', "Show this help screen.")
-	noverify := getopt.BoolLong("no-verify", 'N', "Do not verify TLS/SSL certificates.")
-	onlyheaders := getopt.BoolLong("only-headers", 'H', "Only dump HTTP request/response headers (skip the body).")
-	v := getopt.BoolLong("version", 'v', "Print version information and exit")
+type Opt struct {
+	Help        bool `cli:"-h, --help"`
+	Version     bool `cli:"-v, --version"`
+	SkipVerify  bool `cli:-k, -N, --no-verify"`
+	OnlyHeaders bool `cli:-H, --only-headers"`
+}
 
+func usage(out io.Writer) {
+	fmt.Fprintf(out, "Usage: @G{gotcha} [-hHNv] @C{https://target.system} [local port]\n\n")
+	fmt.Fprintf(out, "  -h, --help           Show this help screen\n")
+	fmt.Fprintf(out, "  -v, --version        Print version information and exit\n")
+	fmt.Fprintf(out, "  -H, --only-headers   Only dump HTTP request/response headers (skip the body).\n")
+	fmt.Fprintf(out, "  -k, --no-verify      Do not verify TLS/SSL certificates.\n")
+}
+
+func main() {
+	var opt Opt
 	verifyStr := strings.ToLower(os.Getenv("SSL_SKIP_VERIFY"))
 	if verifyStr != "" && verifyStr != "no" && verifyStr != "false" && verifyStr != "0" {
-		*noverify = true
+		opt.SkipVerify = true
 	}
 
-	var opts = getopt.CommandLine
-	opts.Parse(os.Args)
+	_, args, err := cli.Parse(&opt)
 
-	if v != nil && *v {
+	if opt.Version {
 		if Version == "" {
 			fmt.Printf("gotcha (development)\n")
 		} else {
@@ -48,19 +58,18 @@ func main() {
 		os.Exit(0)
 	}
 
-	if *help {
-		getopt.PrintUsage(os.Stdout)
+	if opt.Help {
+		usage(os.Stdout)
 		return
 	}
 
-	if opts.NArgs() > 2 {
-		getopt.PrintUsage(os.Stderr)
+	if len(args) > 2 {
+		usage(os.Stderr)
 		os.Exit(1)
 		return
 	}
 
 	backend := os.Getenv("GOTCHA_BACKEND")
-	args := opts.Args()
 	if len(args) >= 1 {
 		backend = args[0]
 	}
@@ -112,7 +121,7 @@ func main() {
 		b2b.ContentLength = req.ContentLength
 		b2b.TransferEncoding = req.TransferEncoding
 
-		if x, err := httputil.DumpRequestOut(b2b, !*onlyheaders); err == nil {
+		if x, err := httputil.DumpRequestOut(b2b, !opt.OnlyHeaders); err == nil {
 			fmt.Fprintf(os.Stderr, "%s\n", string(x))
 		}
 
@@ -128,14 +137,14 @@ func main() {
 				}
 
 				fmt.Printf("-- REDIRECT ------\n")
-				if x, err := httputil.DumpRequestOut(req, !*onlyheaders); err == nil {
+				if x, err := httputil.DumpRequestOut(req, !opt.OnlyHeaders); err == nil {
 					fmt.Fprintf(os.Stderr, "%s\n", string(x))
 				}
 				return nil
 			},
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: *noverify,
+					InsecureSkipVerify: opt.SkipVerify,
 				},
 				Proxy: http.ProxyFromEnvironment,
 			},
@@ -152,7 +161,7 @@ func main() {
 		}
 
 		fmt.Fprintf(os.Stderr, "\n\n\n")
-		if x, err := httputil.DumpResponse(res, !*onlyheaders); err == nil {
+		if x, err := httputil.DumpResponse(res, !opt.OnlyHeaders); err == nil {
 			fmt.Fprintf(os.Stderr, "%s\n", string(x))
 		}
 
