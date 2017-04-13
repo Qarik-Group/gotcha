@@ -28,8 +28,10 @@ var Version string
 type Opt struct {
 	Help        bool `cli:"-h, --help"`
 	Version     bool `cli:"-v, --version"`
-	SkipVerify  bool `cli:-k, -N, --no-verify"`
-	OnlyHeaders bool `cli:-H, --only-headers"`
+	SkipVerify  bool `cli:"-k, -N, --no-verify"`
+	OnlyHeaders bool `cli:"-H, --only-headers"`
+	Redirect    bool `cli:"-r, --redirect"`
+	KeepReferer bool `cli:"--keep-referer"`
 }
 
 func usage(out io.Writer) {
@@ -38,10 +40,13 @@ func usage(out io.Writer) {
 	fmt.Fprintf(out, "  -v, --version        Print version information and exit\n")
 	fmt.Fprintf(out, "  -H, --only-headers   Only dump HTTP request/response headers (skip the body).\n")
 	fmt.Fprintf(out, "  -k, --no-verify      Do not verify TLS/SSL certificates.\n")
+	fmt.Fprintf(out, "  -r, --redirect       Rewrite and return 3xx redirects.\n")
+	fmt.Fprintf(out, "      --keep-referer   Pass Referer: headers through, even with -r.\n")
 }
 
 func main() {
 	var opt Opt
+
 	verifyStr := strings.ToLower(os.Getenv("SSL_SKIP_VERIFY"))
 	if verifyStr != "" && verifyStr != "no" && verifyStr != "false" && verifyStr != "0" {
 		opt.SkipVerify = true
@@ -101,6 +106,11 @@ func main() {
 		}
 	}
 	fmt.Fprintf(os.Stderr, "binding %s\n", bind)
+	if !opt.Redirect {
+		fmt.Fprintf(os.Stderr, "redirects will be followed\n")
+	} else {
+		fmt.Fprintf(os.Stderr, "redirects will be returned\n")
+	}
 
 	http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
 		end, err := url.Parse(req.URL.String())
@@ -109,10 +119,14 @@ func main() {
 			w.WriteHeader(599)
 			return
 		}
+		wanted := end.Host
 		end.Host = target.Host
 		end.Scheme = target.Scheme
 		b2b, err := http.NewRequest(req.Method, end.String(), req.Body)
 		for header, values := range req.Header {
+			if header == "Referer" && opt.Redirect && !opt.KeepReferer {
+				continue
+			}
 			for _, value := range values {
 				b2b.Header.Add(header, value)
 			}
@@ -127,6 +141,10 @@ func main() {
 
 		client := &http.Client{
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if opt.Redirect {
+					return http.ErrUseLastResponse
+				}
+
 				if len(via) > 10 {
 					return fmt.Errorf("stopped after 10 redirects")
 				}
@@ -177,6 +195,14 @@ func main() {
 		}
 		for header, values := range res.Header {
 			for _, value := range values {
+				if header == "Location" && opt.Redirect {
+					u, err := url.Parse(value)
+					if err == nil {
+						u.Scheme = "http"
+						u.Host = wanted
+						value = u.String()
+					}
+				}
 				w.Header().Add(header, value)
 			}
 		}
