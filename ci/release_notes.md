@@ -14,6 +14,10 @@ redirects to the client.  The rewrites allow gotcha to be used
 with backends that may not set their `Location:` headers properly,
 like the BOSH director.
 
+Colorized output should make it easier to debug and reverse
+engineer HTTP protocols, with minimal eye strain and cognitive
+loss.  Plus, colors're pretty.
+
 ## New Features
 
 `gotcha` can now run as a CF app. It honors the `PORT` env var,
