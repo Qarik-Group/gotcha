@@ -1,0 +1,27 @@
+---
+meta:
+  name:     gotcha
+  release:  Gotcha (is a MiTM proxy...)
+
+  url:      https://ci.starkandwayne.com
+  target:   sw
+  pipeline: (( grab meta.name ))
+
+  go:
+    version: 1.7
+    force_static_binary: true
+
+  github:
+    owner: starkandwayne
+    repo: gotcha
+    private_key:  (( vault "secret/pipelines/gotcha/github:private" ))
+    access_token: (( vault "secret/pipelines/gotcha/github:token" ))
+
+  slack:
+    webhook: (( vault "secret/pipelines/gotcha/slack:webhook" ))
+    channel: "#botspam"
+
+  aws:
+    access_key: (( vault "secret/aws/cfcommunity:access" ))
+    secret_key: (( vault "secret/aws/cfcommunity:secret" ))
+    bucket: gotcha-release-pipeline
