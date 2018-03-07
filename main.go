@@ -2,11 +2,18 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
+	"encoding/pem"
 	fmt "github.com/jhunt/go-ansi"
 	"io"
 	"io/ioutil"
+	"math/big"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -34,6 +41,7 @@ type Opt struct {
 	OnlyHeaders bool `cli:"-H, --only-headers"`
 	Redirect    bool `cli:"-r, --redirect"`
 	KeepReferer bool `cli:"--keep-referer"`
+	TLS         bool `cli:"--tls"`
 }
 
 func usage(out io.Writer) {
@@ -44,6 +52,64 @@ func usage(out io.Writer) {
 	fmt.Fprintf(out, "  -k, --no-verify      Do not verify TLS/SSL certificates.\n")
 	fmt.Fprintf(out, "  -r, --redirect       Rewrite and return 3xx redirects.\n")
 	fmt.Fprintf(out, "      --keep-referer   Pass Referer: headers through, even with -r.\n")
+	fmt.Fprintf(out, "      --tls            Present TLS (with a custom CA) to clients connecting\n")
+	fmt.Fprintf(out, "                       to us.  The CA will be dumped to standard error.\n")
+}
+
+type Cert struct {
+	RawCertificate *x509.Certificate
+	RawKey         *rsa.PrivateKey
+
+	Certificate string
+	Key         string
+}
+
+func (ca *Cert) Sign(cert *Cert) error {
+	raw, err := x509.CreateCertificate(rand.Reader, cert.RawCertificate, ca.RawCertificate, cert.RawKey.Public(), ca.RawKey)
+	if err != nil {
+		return err
+	}
+
+	cert.Certificate = string(pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: raw,
+	}))
+
+	return nil
+}
+
+func certificate(name string, serial int, ttl time.Duration) (*Cert, error) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, err
+	}
+
+	cert := &x509.Certificate{
+		SignatureAlgorithm:    x509.SHA512WithRSA, /* FIXME: hard-coded */
+		PublicKeyAlgorithm:    x509.RSA,
+		Subject:               pkix.Name{CommonName: name},
+		DNSNames:              []string{name},
+		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1")},
+		BasicConstraintsValid: true,
+		IsCA:         true,
+		MaxPathLen:   1,
+		SerialNumber: big.NewInt(1),
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(ttl),
+	}
+
+	pKey := string(pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(key),
+	}))
+
+	return &Cert{
+		RawCertificate: cert,
+		RawKey:         key,
+
+		//	Certificate: pCert,
+		Key: pKey,
+	}, nil
 }
 
 func main() {
@@ -112,6 +178,46 @@ func main() {
 		fmt.Fprintf(os.Stderr, "redirects will be followed\n")
 	} else {
 		fmt.Fprintf(os.Stderr, "redirects will be returned\n")
+	}
+
+	/* cert! */
+	ca, err := certificate("gotcha-ca", 1, 10*365*24*time.Hour)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to generate a CA certificate: %s\n", err)
+		os.Exit(1)
+		return
+	}
+	cert, err := certificate("gotcha", 2, 10*365*24*time.Hour)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to generate a certificate: %s\n", err)
+		os.Exit(1)
+		return
+	}
+
+	if err := ca.Sign(ca); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to sign CA certificate: %s\n", err)
+		os.Exit(1)
+		return
+	}
+	if err := ca.Sign(cert); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to sign certificate: %s\n", err)
+		os.Exit(1)
+		return
+	}
+
+	pair, err := tls.X509KeyPair([]byte(cert.Certificate), []byte(cert.Key))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to parse certificate: %s\n", err)
+		os.Exit(1)
+		return
+	}
+
+	server := &http.Server{
+		Addr: bind,
+		TLSConfig: &tls.Config{
+			Certificates: []tls.Certificate{pair},
+			NextProtos:   []string{"http/1.1"},
+		},
 	}
 
 	http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
@@ -197,7 +303,7 @@ func main() {
 				if header == "Location" && opt.Redirect {
 					u, err := url.Parse(value)
 					if err == nil {
-						u.Scheme = "http"
+						u.Scheme = "https"
 						u.Host = wanted
 						value = u.String()
 					}
@@ -212,7 +318,8 @@ func main() {
 		})
 	})
 
-	http.ListenAndServe(bind, nil)
+	fmt.Printf("@G{CA Certificate:}\n%s\n\n", ca.Certificate)
+	server.ListenAndServeTLS("", "")
 }
 
 func swapBody(b io.ReadCloser, onlyh bool) (io.ReadCloser, io.ReadCloser, error) {
