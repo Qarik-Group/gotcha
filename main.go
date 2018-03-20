@@ -184,7 +184,35 @@ func loadOrGenerateCA() (*Cert, error) {
 	f.Close()
 	return ca, nil
 }
+func setupTLS(server *http.Server) {
+	ca, err := loadOrGenerateCA()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to load or generate a CA: %s\n", err)
+		os.Exit(1)
+	}
 
+	cert, err := certificate("gotcha", 2, 10*365*24*time.Hour)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to generate a certificate: %s\n", err)
+		os.Exit(1)
+	}
+
+	if err := ca.Sign(cert); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to sign certificate: %s\n", err)
+		os.Exit(1)
+	}
+
+	pair, err := tls.X509KeyPair([]byte(cert.Certificate), []byte(cert.Key))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to parse certificate: %s\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("@G{CA Certificate:}\n%s\n\n", ca.Certificate)
+	server.TLSConfig = &tls.Config{
+		Certificates: []tls.Certificate{pair},
+		NextProtos:   []string{"http/1.1"},
+	}
+}
 func main() {
 	var opt Opt
 
@@ -250,35 +278,9 @@ func main() {
 	}
 
 	/* cert! */
-	ca, err := loadOrGenerateCA()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to load or generate a CA: %s\n", err)
-		os.Exit(1)
-	}
-
-	cert, err := certificate("gotcha", 2, 10*365*24*time.Hour)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to generate a certificate: %s\n", err)
-		os.Exit(1)
-	}
-
-	if err := ca.Sign(cert); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to sign certificate: %s\n", err)
-		os.Exit(1)
-	}
-
-	pair, err := tls.X509KeyPair([]byte(cert.Certificate), []byte(cert.Key))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to parse certificate: %s\n", err)
-		os.Exit(1)
-	}
 
 	server := &http.Server{
 		Addr: bind,
-		TLSConfig: &tls.Config{
-			Certificates: []tls.Certificate{pair},
-			NextProtos:   []string{"http/1.1"},
-		},
 	}
 
 	http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
@@ -378,8 +380,12 @@ func main() {
 			w.Write(b)
 		})
 	})
-	fmt.Printf("@G{CA Certificate:}\n%s\n\n", ca.Certificate)
-	server.ListenAndServeTLS("", "")
+	if opt.TLS {
+		setupTLS(server)
+		server.ListenAndServeTLS("", "")
+	} else {
+		server.ListenAndServe()
+	}
 }
 
 func swapBody(b io.ReadCloser, onlyh bool) (io.ReadCloser, io.ReadCloser, error) {
@@ -470,7 +476,7 @@ func dumpRequest(out io.Writer, r *http.Request, onlyh bool) {
 	}
 	dumpHeader(out, r.Header)
 
-	if !onlyh {
+	if !onlyh && r.Body != nil {
 		var save io.ReadCloser
 		save, r.Body, _ = swapBody(r.Body, onlyh)
 
