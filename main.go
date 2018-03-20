@@ -9,6 +9,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/pem"
+	"errors"
 	fmt "github.com/jhunt/go-ansi"
 	"io"
 	"io/ioutil"
@@ -33,6 +34,9 @@ func timing(step string, f func()) {
 }
 
 var Version string
+
+//GotchaCAPath is a constant containing the path to the .gotcha folder which contains the CA/certs/keys gotcha will use for TLS
+var GotchaCAPath = os.Getenv("HOME") + "/.gotcha"
 
 type Opt struct {
 	Help        bool `cli:"-h, --help"`
@@ -112,6 +116,75 @@ func certificate(name string, serial int, ttl time.Duration) (*Cert, error) {
 	}, nil
 }
 
+func loadOrGenerateCA() (*Cert, error) {
+	if _, err := os.Stat(GotchaCAPath); !os.IsNotExist(err) {
+		fmt.Printf("Using cached CA certificate located at: %s/ca_cert.pem\n", GotchaCAPath)
+		cert, err := ioutil.ReadFile(GotchaCAPath + "/ca_cert.pem")
+		if err != nil {
+			return nil, err
+		}
+		key, err := ioutil.ReadFile(GotchaCAPath + "/ca_key.pem")
+		if err != nil {
+			return nil, err
+		}
+		certBlock, _ := pem.Decode(cert)
+		if certBlock == nil {
+			return nil, errors.New("Failed to decode ca certificate")
+		}
+		keyBlock, _ := pem.Decode(key)
+		if keyBlock == nil {
+			return nil, errors.New("Failed to decode ca private key")
+		}
+		rawKey, err := x509.ParsePKCS1PrivateKey(keyBlock.Bytes)
+		if err != nil {
+			return nil, err
+		}
+		rawCert, err := x509.ParseCertificate(certBlock.Bytes)
+		if err != nil {
+			return nil, err
+		}
+
+		return &Cert{
+			RawCertificate: rawCert,
+			RawKey:         rawKey,
+
+			Certificate: string(cert),
+			Key:         string(key),
+		}, nil
+	}
+
+	fmt.Printf("gotcha CA folder does not exist ... generating $HOME/.gotcha folder to use for TLS files\n")
+	err := os.MkdirAll(GotchaCAPath, os.ModePerm)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create gotcha ca folder at $HOME/.gotcha: %s\n", err)
+	}
+
+	ca, err := certificate("gotcha-ca", 1, 100*365*24*time.Hour)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to generate a CA certificate: %s\n", err)
+		os.Exit(1)
+	}
+
+	if err := ca.Sign(ca); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to sign CA certificate: %s\n", err)
+		os.Exit(1)
+	}
+	f, err := os.Create(GotchaCAPath + "/ca_cert.pem")
+	if err != nil {
+		return nil, err
+	}
+	f.WriteString(ca.Certificate)
+	f.Close()
+
+	f, err = os.Create(GotchaCAPath + "/ca_key.pem")
+	if err != nil {
+		return nil, err
+	}
+	f.WriteString(ca.Key)
+	f.Close()
+	return ca, nil
+}
+
 func main() {
 	var opt Opt
 
@@ -133,13 +206,11 @@ func main() {
 
 	if opt.Help {
 		usage(os.Stdout)
-		return
 	}
 
 	if len(args) > 2 {
 		usage(os.Stderr)
 		os.Exit(1)
-		return
 	}
 
 	backend := os.Getenv("GOTCHA_BACKEND")
@@ -152,14 +223,12 @@ func main() {
 			"If you are deploying gotcha as a Cloud Foundry application, don't forget to `cf set-env"+
 			" appname GOTCHA_BACKEND https://host/url'\n\n")
 		os.Exit(1)
-		return
 	}
 
 	target, err := url.Parse(backend)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to parse target '%s': %s\n", args[0], err)
 		os.Exit(1)
-		return
 	}
 	fmt.Fprintf(os.Stderr, "targeting %s\n", target)
 
@@ -181,35 +250,27 @@ func main() {
 	}
 
 	/* cert! */
-	ca, err := certificate("gotcha-ca", 1, 10*365*24*time.Hour)
+	ca, err := loadOrGenerateCA()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to generate a CA certificate: %s\n", err)
+		fmt.Fprintf(os.Stderr, "failed to load or generate a CA: %s\n", err)
 		os.Exit(1)
-		return
 	}
+
 	cert, err := certificate("gotcha", 2, 10*365*24*time.Hour)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to generate a certificate: %s\n", err)
 		os.Exit(1)
-		return
 	}
 
-	if err := ca.Sign(ca); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to sign CA certificate: %s\n", err)
-		os.Exit(1)
-		return
-	}
 	if err := ca.Sign(cert); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to sign certificate: %s\n", err)
 		os.Exit(1)
-		return
 	}
 
 	pair, err := tls.X509KeyPair([]byte(cert.Certificate), []byte(cert.Key))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to parse certificate: %s\n", err)
 		os.Exit(1)
-		return
 	}
 
 	server := &http.Server{
@@ -317,7 +378,6 @@ func main() {
 			w.Write(b)
 		})
 	})
-
 	fmt.Printf("@G{CA Certificate:}\n%s\n\n", ca.Certificate)
 	server.ListenAndServeTLS("", "")
 }
