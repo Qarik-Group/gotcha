@@ -35,9 +35,6 @@ func timing(step string, f func()) {
 
 var Version string
 
-//GotchaCAPath is a constant containing the path to the .gotcha folder which contains the CA/certs/keys gotcha will use for TLS
-var GotchaCAPath = os.Getenv("HOME") + "/.gotcha"
-
 type Opt struct {
 	Help        bool `cli:"-h, --help"`
 	Version     bool `cli:"-v, --version"`
@@ -115,44 +112,8 @@ func certificate(name string, serial int, ttl time.Duration) (*Cert, error) {
 		Key: pKey,
 	}, nil
 }
-
-func loadOrGenerateCA() (*Cert, error) {
-	if _, err := os.Stat(GotchaCAPath); !os.IsNotExist(err) {
-		fmt.Printf("Using cached CA certificate located at: %s/ca_cert.pem\n", GotchaCAPath)
-		cert, err := ioutil.ReadFile(GotchaCAPath + "/ca_cert.pem")
-		if err != nil {
-			return nil, err
-		}
-		key, err := ioutil.ReadFile(GotchaCAPath + "/ca_key.pem")
-		if err != nil {
-			return nil, err
-		}
-		certBlock, _ := pem.Decode(cert)
-		if certBlock == nil {
-			return nil, errors.New("Failed to decode ca certificate")
-		}
-		keyBlock, _ := pem.Decode(key)
-		if keyBlock == nil {
-			return nil, errors.New("Failed to decode ca private key")
-		}
-		rawKey, err := x509.ParsePKCS1PrivateKey(keyBlock.Bytes)
-		if err != nil {
-			return nil, err
-		}
-		rawCert, err := x509.ParseCertificate(certBlock.Bytes)
-		if err != nil {
-			return nil, err
-		}
-
-		return &Cert{
-			RawCertificate: rawCert,
-			RawKey:         rawKey,
-
-			Certificate: string(cert),
-			Key:         string(key),
-		}, nil
-	}
-
+func generateCA() error {
+	GotchaCAPath := os.Getenv("HOME") + "/.gotcha"
 	fmt.Printf("gotcha CA folder does not exist ... generating $HOME/.gotcha folder to use for TLS files\n")
 	err := os.MkdirAll(GotchaCAPath, os.ModePerm)
 	if err != nil {
@@ -171,21 +132,65 @@ func loadOrGenerateCA() (*Cert, error) {
 	}
 	f, err := os.Create(GotchaCAPath + "/ca_cert.pem")
 	if err != nil {
-		return nil, err
+		return err
 	}
 	f.WriteString(ca.Certificate)
 	f.Close()
 
 	f, err = os.Create(GotchaCAPath + "/ca_key.pem")
 	if err != nil {
-		return nil, err
+		return err
 	}
 	f.WriteString(ca.Key)
 	f.Close()
-	return ca, nil
+	return nil
 }
+func loadCA() (*Cert, error) {
+	GotchaCAPath := os.Getenv("HOME") + "/.gotcha"
+	if _, err := os.Stat(GotchaCAPath); os.IsNotExist(err) {
+		//path does not exist, so generate the files to be loaded
+		err := generateCA()
+		if err != nil {
+			return nil, err
+		}
+	}
+	fmt.Printf("Using cached CA certificate located at: %s/ca_cert.pem\n", GotchaCAPath)
+	cert, err := ioutil.ReadFile(GotchaCAPath + "/ca_cert.pem")
+	if err != nil {
+		return nil, err
+	}
+	key, err := ioutil.ReadFile(GotchaCAPath + "/ca_key.pem")
+	if err != nil {
+		return nil, err
+	}
+	certBlock, _ := pem.Decode(cert)
+	if certBlock == nil {
+		return nil, errors.New("Failed to decode ca certificate")
+	}
+	keyBlock, _ := pem.Decode(key)
+	if keyBlock == nil {
+		return nil, errors.New("Failed to decode ca private key")
+	}
+	rawKey, err := x509.ParsePKCS1PrivateKey(keyBlock.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	rawCert, err := x509.ParseCertificate(certBlock.Bytes)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Cert{
+		RawCertificate: rawCert,
+		RawKey:         rawKey,
+
+		Certificate: string(cert),
+		Key:         string(key),
+	}, nil
+}
+
 func setupTLS(server *http.Server) {
-	ca, err := loadOrGenerateCA()
+	ca, err := loadCA()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to load or generate a CA: %s\n", err)
 		os.Exit(1)
@@ -234,6 +239,7 @@ func main() {
 
 	if opt.Help {
 		usage(os.Stdout)
+		return
 	}
 
 	if len(args) > 2 {
@@ -276,8 +282,6 @@ func main() {
 	} else {
 		fmt.Fprintf(os.Stderr, "redirects will be returned\n")
 	}
-
-	/* cert! */
 
 	server := &http.Server{
 		Addr: bind,
@@ -366,7 +370,11 @@ func main() {
 				if header == "Location" && opt.Redirect {
 					u, err := url.Parse(value)
 					if err == nil {
-						u.Scheme = "https"
+						if opt.TLS {
+							u.Scheme = "https"
+						} else {
+							u.Scheme = "http"
+						}
 						u.Host = wanted
 						value = u.String()
 					}
